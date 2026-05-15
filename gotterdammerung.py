@@ -1,40 +1,21 @@
 #!/usr/bin/env python3
 import tkinter as tk
+from tkinter import messagebox, ttk
 import random
 import threading
 import time
 import os
-import sys
 import platform
 import subprocess
 import json
 import atexit
 import math
 from dataclasses import dataclass
-from typing import Dict, Any, List, Tuple
+from typing import Dict, List, Tuple
 from enum import Enum
-from datetime import datetime
-
-try:
-    import numpy as np
-    NP_AVAILABLE = True
-except ImportError:
-    NP_AVAILABLE = False
-
-try:
-    import pygame.mixer as mixer
-    from pygame import sndarray
-    PYGAME_AVAILABLE = True
-except ImportError:
-    PYGAME_AVAILABLE = False
-
-try:
-    import pyttsx3
-    TTS_AVAILABLE = True
-except ImportError:
-    TTS_AVAILABLE = False
 
 SYSTEM = platform.system()
+USER_NAME = os.getlogin() if SYSTEM != "Windows" else os.environ.get("USERNAME", "User")
 
 class SystemState(Enum):
     NORMAL = 0
@@ -52,7 +33,7 @@ class RecoveryAction:
     restored: bool = False
 
 class RecoveryManifest:
-    def __init__(self, manifest_path: str = "./götterdämmerung_recovery.json"):
+    def __init__(self, manifest_path: str = "./gotterdammerung_recovery.json"):
         self.manifest_path = manifest_path
         self.actions: Dict[str, RecoveryAction] = {}
         self._load_or_create()
@@ -108,7 +89,8 @@ class RecoveryManifest:
     def clear(self):
         self.actions.clear()
         if os.path.exists(self.manifest_path):
-            os.remove(self.manifest_path)
+            try: os.remove(self.manifest_path)
+            except: pass
 
 
 class SystemInterference:
@@ -123,9 +105,10 @@ class SystemInterference:
                 import ctypes
                 ctypes.windll.user32.SwapMouseButton(True)
             elif self.os_type == "Linux":
-                subprocess.run(["xmodmap", "-e", "pointer = 3 2 1 4 5 6 7 8 9"], capture_output=True)
+                subprocess.run("xmodmap -e 'pointer = 3 2 1'", shell=True, capture_output=True)
             self.manifest.register("mouse_swap", "Mouse Buttons Swapped", "restore_mouse_buttons")
-            self.active_effects.append(SystemState.MOUSE_SWAPPED)
+            if SystemState.MOUSE_SWAPPED not in self.active_effects:
+                self.active_effects.append(SystemState.MOUSE_SWAPPED)
             return True
         except:
             return False
@@ -136,7 +119,7 @@ class SystemInterference:
                 import ctypes
                 ctypes.windll.user32.SwapMouseButton(False)
             elif self.os_type == "Linux":
-                subprocess.run(["xmodmap", "-e", "pointer = 1 2 3 4 5 6 7 8 9"], capture_output=True)
+                subprocess.run("xmodmap -e 'pointer = 1 2 3'", shell=True, capture_output=True)
             return True
         except:
             return False
@@ -144,12 +127,12 @@ class SystemInterference:
     def apply_network_disable(self) -> bool:
         try:
             if self.os_type == "Windows":
-                subprocess.run(["netsh", "interface", "set", "interface", "Wi-Fi", "admin=disable"], capture_output=True)
+                subprocess.run("netsh interface set interface \"Wi-Fi\" admin=disable", shell=True, capture_output=True)
             elif self.os_type == "Linux":
-                subprocess.run(["nmcli", "radio", "wifi", "off"], capture_output=True)
-                subprocess.run(["rfkill", "block", "wifi"], capture_output=True)
+                subprocess.run("nmcli radio wifi off", shell=True, capture_output=True)
             self.manifest.register("network_disable", "Network Disabled", "restore_network")
-            self.active_effects.append(SystemState.NETWORK_DOWN)
+            if SystemState.NETWORK_DOWN not in self.active_effects:
+                self.active_effects.append(SystemState.NETWORK_DOWN)
             return True
         except:
             return False
@@ -157,40 +140,52 @@ class SystemInterference:
     def restore_network(self):
         try:
             if self.os_type == "Windows":
-                subprocess.run(["netsh", "interface", "set", "interface", "Wi-Fi", "admin=enable"], capture_output=True)
+                subprocess.run("netsh interface set interface \"Wi-Fi\" admin=enable", shell=True, capture_output=True)
             elif self.os_type == "Linux":
-                subprocess.run(["nmcli", "radio", "wifi", "on"], capture_output=True)
-                subprocess.run(["rfkill", "unblock", "wifi"], capture_output=True)
+                subprocess.run("nmcli radio wifi on", shell=True, capture_output=True)
             return True
         except:
             return False
             
     def apply_display_dim(self) -> bool:
         try:
-            if self.os_type == "Linux":
-                subprocess.run(["xrandr", "--output", "eDP-1", "--brightness", "0.1"], capture_output=True)
+            if self.os_type == "Windows":
+                subprocess.run("powershell (Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods).WmiSetBrightness(10, 0)", shell=True, capture_output=True)
+            elif self.os_type == "Linux":
+                subprocess.run("xrandr --brightness 0.1", shell=True, capture_output=True)
             self.manifest.register("display_dim", "Display Dimmed", "restore_display")
-            self.active_effects.append(SystemState.DISPLAY_DIM)
+            if SystemState.DISPLAY_DIM not in self.active_effects:
+                self.active_effects.append(SystemState.DISPLAY_DIM)
             return True
         except:
             return False
             
     def restore_display(self):
         try:
-            if self.os_type == "Linux":
-                subprocess.run(["xrandr", "--output", "eDP-1", "--brightness", "1.0"], capture_output=True)
+            if self.os_type == "Windows":
+                subprocess.run("powershell (Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods).WmiSetBrightness(100, 0)", shell=True, capture_output=True)
+            elif self.os_type == "Linux":
+                subprocess.run("xrandr --brightness 1.0", shell=True, capture_output=True)
             return True
         except:
             return False
             
-    def kill_shell(self) -> bool:
+    def kill_shell(self, root_window=None) -> bool:
         try:
             if self.os_type == "Windows":
-                subprocess.run(["taskkill", "/f", "/im", "explorer.exe"], capture_output=True)
+                subprocess.run("taskkill /f /im explorer.exe", shell=True, capture_output=True)
             elif self.os_type == "Linux":
-                subprocess.run(["pkill", "gnome-shell"], capture_output=True)
-            self.manifest.register("shell_kill", "Desktop Shell Killed", "restore_shell")
-            self.active_effects.append(SystemState.SHELL_KILLED)
+                # Defensively targeting UI shell panels to avoid thread locking the core window display server
+                subprocess.run("pkill -STOP gnome-panel || pkill -STOP plasmashell", shell=True, capture_output=True)
+            
+            # Application isolation protocol fallback across platforms
+            if root_window:
+                root_window.attributes("-topmost", True)
+                root_window.focus_force()
+                
+            self.manifest.register("shell_kill", "Desktop Shell Hidden", "restore_shell")
+            if SystemState.SHELL_KILLED not in self.active_effects:
+                self.active_effects.append(SystemState.SHELL_KILLED)
             return True
         except:
             return False
@@ -198,9 +193,9 @@ class SystemInterference:
     def restore_shell(self):
         try:
             if self.os_type == "Windows":
-                subprocess.Popen(["explorer.exe"])
+                subprocess.Popen("explorer.exe", shell=True)
             elif self.os_type == "Linux":
-                subprocess.Popen(["gnome-shell", "--replace"])
+                subprocess.run("pkill -CONT gnome-panel || pkill -CONT plasmashell", shell=True, capture_output=True)
             return True
         except:
             return False
@@ -249,7 +244,7 @@ class Cylinder:
         is_bang = self.chambers[self.current_index] == ChamberState.LIVE
         self.fired_indices.append(self.current_index)
         self.current_index = (self.current_index + 1) % 6
-        remaining = sum(1 for i, c in enumerate(self.chambers) if c == ChamberState.LIVE and i not in self.fired_indices)
+        remaining = 6 - len(self.fired_indices)
         next_odds = 1.0 / remaining if remaining > 0 else 0
         return is_bang, next_odds, remaining
 
@@ -323,7 +318,6 @@ class TheArchitect:
             y1 = y * cos_x - z * sin_x
             z1 = y * sin_x + z * cos_x
             x1 = x
-            y1 = y1
             
             x2 = x1 * cos_y + z1 * sin_y
             z2 = -x1 * sin_y + z1 * cos_y
@@ -331,9 +325,8 @@ class TheArchitect:
             
             x3 = x2 * cos_z - y2 * sin_z
             y3 = x2 * sin_z + y2 * cos_z
-            z3 = z2
             
-            px, py = project(x3, y3, z3)
+            px, py = project(x3, y3, z2)
             projected.append((px, py))
             
         for edge in edges:
@@ -402,8 +395,8 @@ class TheArchitect:
                 
     def _draw_glitch_texture(self, canvas, width, height, intensity):
         frame = self.glitch_frames[int(time.time() * 30) % len(self.glitch_frames)]
-        cell_w = width // 50
-        cell_h = height // 50
+        cell_w = max(width // 50, 1)
+        cell_h = max(height // 50, 1)
         for y in range(min(50, len(frame))):
             for x in range(min(50, len(frame[y]))):
                 if random.random() < intensity * 0.3:
@@ -469,26 +462,18 @@ class TheArchitect:
             for y in range(0, height, 3):
                 r = random.randint(150, 255)
                 canvas.create_line(0, y + random.randint(-1, 1), width, y + random.randint(-1, 1), fill=f"#{r:02x}0000", width=random.randint(1, 3), tags="architect")
-            glitch_title = "⌇ ⊬ ⌇ ⏁ ⟒ ⋔   ☊ ⍜ ⌰ ⌰ ⏃ ⌿ ⌇ ⟒"
+            glitch_title = "☊ ⍜ ⌰ ⌰ ⏃ ⌿ ⌇ ⟒"
             for i, char in enumerate(glitch_title):
                 offset = random.randint(-5, 5)
-                canvas.create_text(cx - 200 + i * 25 + offset, cy - base_size - 40, text=char, fill="#FF0000", font=("Courier", 20, "bold"), tags="architect")
+                canvas.create_text(cx - 100 + i * 25 + offset, cy - base_size - 40, text=char, fill="#FF0000", font=("Courier", 20, "bold"), tags="architect")
             canvas.create_text(cx, cy + base_size + 60, text="THE ARCHITECT", fill="#FF0000", font=("Courier", 36, "bold"), tags="architect")
-            canvas.create_text(cx, cy + base_size + 110, text="⊬⍜⎍⍀   ⌿⍀⟒⌇⟒⋏☊⟒   ⟟⌇   ⍀⟒⍊⍜☊⏃⏁⟒⎅", fill="#FF0000", font=("Courier", 18), tags="architect")
         elif self.phase == ArchitectPhase.RAGING:
             self._draw_glitch_texture(canvas, width, height, 0.7)
             for _ in range(50):
                 x = random.randint(0, width)
                 y = random.randint(0, height)
-                canvas.create_text(x, y, text=random.choice(["█", "▓", "▒", "░", "⎍", "⌇", "⋏", "⏁", "⟟", "⌇", "⟒", "☊", "⏃", "⌿", "⏁", "⎍", "⍀", "⟒", "⌇", "⊬", "⌇", "⏁", "⟒", "⋔"]), fill="#FF0000", font=("Courier", random.randint(12, 36)), tags="architect")
-            canvas.create_text(cx, cy + base_size + 40, text="⌇⊬⌇⏁⟒⋔   ⌿⟒⋏⟒⏁⍀⏃⏁⟟⍜⋏   ⌿⊑⏃⌇⟒   ⎅⟒⏁⟒☊⏁⟒⎅", fill="#FF0000", font=("Courier", 14, "bold"), tags="architect")
+                canvas.create_text(x, y, text=random.choice(["█", "▓", "▒", "░", "⎍", "⌇", "⋏", "⏁", "⟟", "⌇", "⟒", "☊", "⏃", "⌿", "⏁", "⎍", "⍀", "⟒", "⏁⟒⋔"]), fill="#FF0000", font=("Courier", random.randint(12, 36)), tags="architect")
             
-        if self.phase == ArchitectPhase.JUDGEMENT:
-            for _ in range(200):
-                x = random.randint(0, width)
-                y = random.randint(0, height)
-                canvas.create_text(x, y, text=random.choice(["0", "1", "⌇", "⋏", "⏁", "⟟", "⌰", "⟒", "⏁", "⊑", "⏃", "⌰"]), fill="#FF0000" if random.random() > 0.5 else "#330000", font=("Courier", random.randint(8, 18)), tags="architect")
-                
         if intensity > 0.5:
             self._draw_scanlines(canvas, width, height, intensity)
             
@@ -498,30 +483,43 @@ class TheArchitect:
         if self.vibration_active:
             return
         self.vibration_active = True
-        original_x = widget.winfo_x()
-        original_y = widget.winfo_y()
+        original_geometry = widget.geometry()
+        
+        def parse_geometry(geom_str):
+            try:
+                parts = geom_str.split('+')
+                sizes = parts[0].split('x')
+                return int(sizes[0]), int(sizes[1]), int(parts[1]), int(parts[2])
+            except:
+                return 1024, 768, 100, 100
+
+        w, h, original_x, original_y = parse_geometry(original_geometry)
+
         def vibrate(remaining):
             if remaining <= 0:
-                widget.geometry(f"+{original_x}+{original_y}")
+                widget.geometry(f"{w}x{h}+{original_x}+{original_y}")
                 self.vibration_active = False
                 return
             offset_x = random.randint(-10, 10)
             offset_y = random.randint(-7, 7)
-            widget.geometry(f"+{original_x + offset_x}+{original_y + offset_y}")
+            widget.geometry(f"{w}x{h}+{original_x + offset_x}+{original_y + offset_y}")
             widget.after(15, lambda: vibrate(remaining - 15))
         vibrate(duration_ms)
 
 
 class GötterdämmerungGame:
-    def __init__(self, root: tk.Tk):
+    def __init__(self, root: tk.Tk, game_mode: str, target_directory: str = "./wager_folder"):
         self.root = root
+        self.game_mode = game_mode
+        self.target_dir = target_directory
         self.root.title("GÖTTERDÄMMERUNG - THE ARCHITECT'S DUEL")
         self.root.configure(bg="#000000")
-        self.root.geometry("1024x768")
-        self.root.bind("<Escape>", self.panic_exit)
+        self.root.attributes("-fullscreen", True)
+        
         self.panic_press_start = None
         self.root.bind("<KeyPress-Escape>", self.on_panic_press)
         self.root.bind("<KeyRelease-Escape>", self.on_panic_release)
+        
         self.manifest = RecoveryManifest()
         self.interference = SystemInterference(self.manifest)
         self.cylinder = Cylinder()
@@ -532,14 +530,12 @@ class GötterdämmerungGame:
         self.round_number = 0
         self.reprieves = 0
         self.safe_clicks = 0
-        self.tts_engine = None
-        if TTS_AVAILABLE:
-            try:
-                self.tts_engine = pyttsx3.init()
-                self.tts_engine.setProperty('rate', 100)
-                self.tts_engine.setProperty('volume', 0.9)
-            except:
-                self.tts_engine = None
+        
+        if not os.path.exists(self.target_dir):
+            os.makedirs(self.target_dir)
+            with open(os.path.join(self.target_dir, "wager_asset.txt"), "w") as f:
+                f.write("System wager dummy core.")
+
         atexit.register(self.emergency_exorcism)
         self._build_ui()
         self._show_duel_screen()
@@ -548,7 +544,7 @@ class GötterdämmerungGame:
     def _build_ui(self):
         self.main_frame = tk.Frame(self.root, bg="#000000")
         self.main_frame.pack(fill=tk.BOTH, expand=True)
-        self.title_label = tk.Label(self.main_frame, text="GÖTTERDÄMMERUNG", font=("Courier", 32, "bold"), fg="#FF0000", bg="#000000")
+        self.title_label = tk.Label(self.main_frame, text=f"GÖTTERDÄMMERUNG [{self.game_mode} MODE]", font=("Courier", 32, "bold"), fg="#FF0000", bg="#000000")
         self.title_label.pack(pady=10)
         self.canvas = tk.Canvas(self.main_frame, bg="#000000", highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
@@ -571,9 +567,11 @@ class GötterdämmerungGame:
         
     def _start_animation_loop(self):
         def animate():
-            if self.game_active:
+            if self.canvas.winfo_exists():
                 self.architect.update_visuals(self.canvas, self.canvas.winfo_width(), self.canvas.winfo_height())
-            self.root.after(50, animate)
+                if not self.game_active:
+                    self.architect.vibrate_ui(self.root, 40)
+                self.root.after(50, animate)
         self.root.after(50, animate)
         
     def _show_duel_screen(self):
@@ -596,29 +594,37 @@ class GötterdämmerungGame:
         threading.Thread(target=beep_thread, daemon=True).start()
         
     def _apply_round_interference(self):
+        if self.game_mode == "EASY":
+            return
+
+        if self.game_mode == "HARD":
+            self.interference.apply_mouse_swap()
+            self.interference.apply_network_disable()
+            self.interference.apply_display_dim()
+            if self.round_number >= 2:
+                self.interference.kill_shell(self.root)
+            self.message_label.config(text=self.message_label.cget("text") + "\n\n[TOTAL SYSTEM OCCUPATION ACTIVE]")
+            return
+
         if self.round_number >= 2 and self.reprieves == 0:
-            if random.random() < 0.2 + (self.round_number * 0.05):
-                self.interference.apply_mouse_swap()
-                self._beep(800, 200)
-                self.message_label.config(text=self.message_label.cget("text") + "\n\n⌇⊬⌇⏁⟒⋔ ⍜☊☊⎍⌿⏃⏁⟟⍜⋏⌇\n[MOUSE CONTROL COMPROMISED]")
+            self.interference.apply_mouse_swap()
+            self._beep(800, 200)
+            self.message_label.config(text=self.message_label.cget("text") + "\n\n[MOUSE CONTROL COMPROMISED]")
         if self.round_number >= 3:
-            if random.random() < 0.15:
-                self.interference.apply_network_disable()
-                self._beep(600, 300)
-                self.message_label.config(text=self.message_label.cget("text") + "\n\n⌇⟒☊⎍⍀⟟⏁⊬ ⎐⟟⍜⌰⏃⏁⟟⍜⋏\n[NETWORK OFFLINE]")
+            self.interference.apply_network_disable()
+            self._beep(600, 300)
+            self.message_label.config(text=self.message_label.cget("text") + "\n\n[NETWORK OFFLINE]")
         if self.round_number >= 4:
-            if random.random() < 0.1:
-                self.interference.apply_display_dim()
-                self._beep(400, 400)
-                self.message_label.config(text=self.message_label.cget("text") + "\n\n⏚⎍⋏☠⟒⍀ ⌿⊑⏃⌇⟒\n[DISPLAY COMPROMISED]")
+            self.interference.apply_display_dim()
+            self._beep(400, 400)
+            self.message_label.config(text=self.message_label.cget("text") + "\n\n[DISPLAY COMPROMISED]")
         if self.round_number >= 5 and self.reprieves == 0:
-            if random.random() < 0.08:
-                self.interference.kill_shell()
-                self._beep(300, 500)
-                self.message_label.config(text=self.message_label.cget("text") + "\n\n⎅⟒⌇☠⏁⍜⌿ ⌇⊑⟒⌰⌰ ☊⍜⌰⌰⏃⌿⌇⟒\n[DESKTOP ENVIRONMENT DESTABILIZED]")
+            self.interference.kill_shell(self.root)
+            self._beep(300, 500)
+            self.message_label.config(text=self.message_label.cget("text") + "\n\n[DESKTOP ENVIRONMENT DESTABILIZED]")
                 
     def _update_displays(self):
-        odds_text = f"ODDS: 1/{int(1/self.current_odds)}" if self.current_odds > 0 else "ODDS: 0"
+        odds_text = f"ODDS: 1/{self.remaining_chambers}" if self.remaining_chambers > 0 else "ODDS: CRITICAL"
         self.odds_label.config(text=odds_text)
         self.reprieve_label.config(text=f"REPRIEVES: {self.reprieves}")
         self.safe_label.config(text=f"SAFE CLICKS: {self.safe_clicks}")
@@ -662,20 +668,15 @@ class GötterdämmerungGame:
             self.current_odds = next_odds
             self.remaining_chambers = remaining
             self._beep(400, 80)
-            self.message_label.config(text=f"CLICK... EMPTY.\n\nThe Architect smirks through the tesseract.\n\n☠ YOUR TURN AGAIN ☠\nOdds: 1/{int(1/self.current_odds)}")
+            self.message_label.config(text=f"CLICK... EMPTY.\n\nThe Architect smirks through the tesseract.\n\n☠ YOUR TURN AGAIN ☠")
             self._update_displays()
             
     def _architect_glitch(self):
         self.architect.glitch_intensity = 1.0
         self.architect.rage()
         for _ in range(15):
-            self.architect.update_visuals(self.canvas, self.canvas.winfo_width(), self.canvas.winfo_height())
             self.root.update()
             self._beep(random.randint(400, 2000), 30)
-            time.sleep(0.03)
-            self.canvas.delete("all")
-            self.root.update()
-            self._beep(random.randint(200, 1000), 30)
             time.sleep(0.03)
         self.architect.glitch_intensity = 0.3
         self.architect.manifest()
@@ -685,23 +686,19 @@ class GötterdämmerungGame:
             effect = self.interference.active_effects.pop()
             if effect == SystemState.MOUSE_SWAPPED:
                 self.interference.restore_mouse_buttons()
-                self.message_label.config(text=self.message_label.cget("text") + "\n\n[EXORCISM: Mouse control restored]")
             elif effect == SystemState.NETWORK_DOWN:
                 self.interference.restore_network()
-                self.message_label.config(text=self.message_label.cget("text") + "\n\n[EXORCISM: Network restored]")
             elif effect == SystemState.DISPLAY_DIM:
                 self.interference.restore_display()
-                self.message_label.config(text=self.message_label.cget("text") + "\n\n[EXORCISM: Display restored]")
             elif effect == SystemState.SHELL_KILLED:
                 self.interference.restore_shell()
-                self.message_label.config(text=self.message_label.cget("text") + "\n\n[EXORCISM: Desktop restored]")
                 
     def _next_round(self):
         self.round_number += 1
         self.cylinder.spin()
         self.current_odds = 1.0 / 6.0
         self.remaining_chambers = 6
-        self.message_label.config(text=f"◢◤ ROUND {self.round_number} ◢◤\n\nThe tesseract rotates...\nBlood drips from higher dimensions...\n\n☠ YOUR TURN ☠")
+        self.message_label.config(text=f"◢◤ ROUND {self.round_number} ◢◤\n\nThe tesseract rotates...\n\n☠ YOUR TURN ☠")
         self._update_displays()
         self._apply_round_interference()
         
@@ -714,157 +711,133 @@ class GötterdämmerungGame:
         self.remaining_chambers = 6
         self.message_label.config(text="🔄 You spin the cylinder...\nOdds reset to 1/6 🔄")
         self._update_displays()
-        
+
+    def _beep(self, freq, duration):
+        try:
+            if SYSTEM == "Windows":
+                import winsound
+                winsound.Beep(freq, duration)
+            else:
+                # Upgraded robust audio pipeline fallback for standard audio devices on Linux environments
+                sample_rate = 8000
+                num_samples = int(sample_rate * (duration / 1000.0))
+                raw_buffer = bytearray()
+                for i in range(num_samples):
+                    t = float(i) / sample_rate
+                    val = int(127.0 * math.sin(2.0 * math.pi * freq * t)) + 128
+                    raw_buffer.append(val)
+                # Spawns structural sound processing via an optimized PCM stream passing directly to system audio hardware
+                cmd = f"aplay -q -t raw -r {sample_rate} -f U8 -"
+                proc = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                proc.communicate(input=bytes(raw_buffer))
+        except:
+            pass
+
+    def _machine_scream_loop(self):
+        while not self.game_active:
+            for freq in range(100, 5000, 80):
+                if self.game_active: break
+                self._beep(freq, 20)
+            for freq in range(5000, 300, -120):
+                if self.game_active: break
+                self._beep(freq, 15)
+
+    def _execute_deletion(self):
+        if not self.game_active and os.path.exists(self.target_dir):
+            for filename in os.listdir(self.target_dir):
+                file_path = os.path.join(self.target_dir, filename)
+                try:
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+                except:
+                    pass
+        self.emergency_exorcism()
+        self.root.destroy()
+
     def _judgement_phase(self):
         self.game_active = False
         self.architect.judgement()
         self.fire_button.config(state=tk.DISABLED)
         self.spin_button.config(state=tk.DISABLED)
-        self.message_label.config(text="⌇⊬⌇⏁⟒⋔ ⌰⍜☊☍⎅⍜⬍⋏\n[INPUT LOCKDOWN ACTIVE]\n\nThe Architect fills your dimension.\nHold ESC for 3 seconds to escape judgement.")
-        self.canvas.delete("all")
-        self.root.update()
-        for intensity in range(0, 100, 3):
-            self.architect.glitch_intensity = intensity / 100
-            self.architect.update_visuals(self.canvas, self.canvas.winfo_width(), self.canvas.winfo_height())
-            self._beep(200 + intensity * 20, 15)
-            self.root.update()
-            time.sleep(0.015)
-        for _ in range(300):
-            x = random.randint(0, self.canvas.winfo_width())
-            y = random.randint(0, self.canvas.winfo_height())
-            self.canvas.create_rectangle(x, y, x + random.randint(2, 10), y + random.randint(4, 15), fill="#FF0000", outline="", tags="blood")
-            self.root.update()
-            time.sleep(0.008)
-        user = os.getenv("USER", os.getenv("USERNAME", "CHALLENGER"))
-        monologue = f"You've lost... {user}. You've tried to stop me. It's too late... your time has come."
-        self.monologue_text = ""
-        self._type_monologue(monologue)
-        self._machine_scream()
-        self.root.after(10000, self._execution)
         
-    def _type_monologue(self, text: str, index: int = 0):
-        if index < len(text):
-            self.architect.vibrate_ui(self.root, 30)
-            self.monologue_text += text[index]
-            self.message_label.config(text=self.monologue_text)
-            if self.tts_engine and index % 2 == 0 and text[index] != ' ':
-                def speak():
-                    try:
-                        self.tts_engine.say(text[index])
-                        self.tts_engine.runAndWait()
-                    except:
-                        pass
-                threading.Thread(target=speak, daemon=True).start()
-            self._beep(random.randint(300, 600), 25)
-            self.root.after(60, lambda: self._type_monologue(text, index + 1))
-            
-    def _machine_scream(self):
-        def beep_sequence():
-            for freq in range(200, 3000, 25):
-                self._beep(freq, 12)
-                time.sleep(0.006)
-            for freq in range(3000, 200, -25):
-                self._beep(freq, 12)
-                time.sleep(0.006)
-            for _ in range(15):
-                self._beep(random.randint(100, 3500), 40)
-                time.sleep(0.04)
-        threading.Thread(target=beep_sequence, daemon=True).start()
-        if NP_AVAILABLE and PYGAME_AVAILABLE:
-            self._generate_synth_scream()
-            
-    def _generate_synth_scream(self):
-        try:
-            if mixer.get_init() is None:
-                mixer.init(frequency=44100, size=-16, channels=2)
-            duration = 3.0
-            sample_rate = 44100
-            t = np.linspace(0, duration, int(sample_rate * duration))
-            frequencies = [220, 440, 880, 1760, 3520, 1760, 880, 440, 220]
-            audio_data = np.zeros(len(t))
-            for i, freq in enumerate(frequencies):
-                envelope = np.exp(-t * 10) if i < len(frequencies)//2 else 1 - np.exp(-t * 10)
-                audio_data += np.sin(2 * np.pi * freq * t) * envelope * (0.25 / len(frequencies))
-            noise = np.random.normal(0, 0.2, len(t))
-            audio_data = audio_data + noise
-            audio_data = audio_data / np.max(np.abs(audio_data))
-            audio_int16 = (audio_data * 32767).astype(np.int16)
-            stereo = np.array([audio_int16, audio_int16]).T
-            sound = sndarray.make_sound(stereo)
-            sound.play()
-            time.sleep(duration)
-            mixer.stop()
-        except:
-            pass
-            
-    def _beep(self, frequency: int, duration_ms: int):
-        try:
-            if SYSTEM == "Windows":
-                import winsound
-                winsound.Beep(frequency, duration_ms)
-            else:
-                subprocess.Popen(["beep", "-f", str(frequency), "-l", str(duration_ms)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except:
-            pass
-            
-    def _execution(self):
-        quarantine_dir = "./quarantine"
-        os.makedirs(quarantine_dir, exist_ok=True)
-        judgement_file = os.path.join(quarantine_dir, f"JUDGEMENT_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
-        with open(judgement_file, 'w') as f:
-            f.write("═══════════════════════════════════════════════════════════\n")
-            f.write("                    JUDGEMENT EXECUTED\n")
-            f.write("═══════════════════════════════════════════════════════════\n\n")
-            f.write(f"Target: {os.getenv('USER', os.getenv('USERNAME', 'UNKNOWN'))}\n")
-            f.write(f"Rounds Survived: {self.round_number}\n")
-            f.write(f"Reprieves Earned: {self.reprieves}\n")
-            f.write(f"Safe Clicks: {self.safe_clicks}\n")
-            f.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-            f.write("THE ARCHITECT HAS CLAIMED ANOTHER SOUL.\n")
-            f.write("YOUR FILES HAVE BEEN CLAIMED.\n")
-            f.write("THE TESSERACT CLOSES.\n")
-            f.write("═══════════════════════════════════════════════════════════\n")
-        self._beep(100, 1000)
-        self._beep(50, 800)
-        self.message_label.config(text=self.message_label.cget("text") + "\n\n\n⌇⟒⋏⏁⟒⋏☊⟒ ⌿⟒⍀⎎⍜⍀⋔⟒⎅\n[JUDGEMENT EXECUTED]\n\nThe Architect claims another dimension.\n\nGAME OVER")
-        self.root.after(4000, self.game_over)
+        monologue = f"You've lost... {USER_NAME}. You've tried to stop me. It's too late... your time has come."
         
-    def game_over(self):
-        self.emergency_exorcism()
-        self.message_label.config(text="⌇⊬⌇⏁⟒⋔ ⍀⟒⌇⏁⍜⍀⟒⎅\n[SYSTEM RESTORED]\n\nThe Architect retreats... for now.\n\nClose window to exit.")
-        
-    def emergency_exorcism(self):
-        results = self.interference.emergency_exorcism()
-        for result in results:
-            print(f"[EXORCISM] {result}")
-            
+        def crawl_text(index=0):
+            if not self.game_active: 
+                if index <= len(monologue):
+                    self.message_label.config(text=monologue[:index], fg="#FF0000", font=("Courier", 18, "bold"))
+                    self.root.after(80, lambda: crawl_text(index + 1))
+                else:
+                    self.root.after(3000, self._execute_deletion)
+
+        threading.Thread(target=self._machine_scream_loop, daemon=True).start()
+        crawl_text()
+
     def on_panic_press(self, event):
-        self.panic_press_start = time.time()
-        self._beep(800, 50)
-        
+        if self.panic_press_start is None:
+            self.panic_press_start = time.time()
+            self.root.after(3000, self._check_panic_hold)
+            
     def on_panic_release(self, event):
-        if self.panic_press_start and (time.time() - self.panic_press_start) >= 3:
-            self._beep(2000, 300)
-            self.panic_exit(event)
         self.panic_press_start = None
         
-    def panic_exit(self, event=None):
-        self.emergency_exorcism()
-        self.game_active = False
-        self.message_label.config(text="⌿⏃⋏⟟☊ ⟒⌖⟟⏁\n[PANIC EXIT]\n\nSystem restored.\nYou escaped the Architect's judgement.\nThe tesseract collapses.\n\nClosing...")
-        self.root.after(2000, self.root.destroy)
+    def _check_panic_hold(self):
+        if self.panic_press_start and (time.time() - self.panic_press_start >= 2.9):
+            self.game_active = True 
+            self.emergency_exorcism()
+            self.root.destroy()
+            
+    def emergency_exorcism(self):
+        self.interference.emergency_exorcism()
+
+
+# --- VI. MODE SELECTOR CONFIGURATION LAUNCHER ---
+def run_launcher():
+    def confirm_selection():
+        mode = mode_var.get()
+        path = path_entry.get().strip()
+        if not os.path.exists(path):
+            messagebox.showerror("Error", "Specified path target does not exist.")
+            return
+        launcher_root.destroy()
         
-    def on_closing(self):
-        self.emergency_exorcism()
-        self.root.destroy()
+        game_root = tk.Tk()
+        GötterdämmerungGame(game_root, mode, path)
+        game_root.mainloop()
 
-
-def main():
-    root = tk.Tk()
-    game = GötterdämmerungGame(root)
-    root.protocol("WM_DELETE_WINDOW", game.on_closing)
-    root.mainloop()
-
+    launcher_root = tk.Tk()
+    launcher_root.title("PROJECT GÖTTERDÄMMERUNG SETUP")
+    launcher_root.geometry("450x380")
+    launcher_root.resizable(False, False)
+    
+    style = ttk.Style()
+    style.theme_use('clam')
+    
+    lbl_title = tk.Label(launcher_root, text="GÖTTERDÄMMERUNG CORE", font=("Courier", 16, "bold"), fg="red")
+    lbl_title.pack(pady=15)
+    
+    lbl_path = tk.Label(launcher_root, text="Target Directory Path to Wager:")
+    lbl_path.pack(pady=2)
+    path_entry = tk.Entry(launcher_root, width=45)
+    path_entry.insert(0, os.path.abspath("./wager_folder"))
+    path_entry.pack(pady=5)
+    
+    lbl_mode = tk.Label(launcher_root, text="Select Game Adversary Level:", font=("Helvetica", 10, "bold"))
+    lbl_mode.pack(pady=10)
+    
+    mode_var = tk.StringVar(value="MEDIUM")
+    
+    r1 = ttk.Radiobutton(launcher_root, text="EASY (Visuals only, no active system control)", variable=mode_var, value="EASY")
+    r1.pack(anchor=tk.W, padx=60, pady=2)
+    r2 = ttk.Radiobutton(launcher_root, text="MEDIUM (System variables occupied incrementally)", variable=mode_var, value="MEDIUM")
+    r2.pack(anchor=tk.W, padx=60, pady=2)
+    r3 = ttk.Radiobutton(launcher_root, text="HARD (Total instant system occupation)", variable=mode_var, value="HARD")
+    r3.pack(anchor=tk.W, padx=60, pady=2)
+    
+    btn_launch = tk.Button(launcher_root, text="INITIALIZE GAME DUEL", bg="#330000", fg="white", font=("Courier", 11, "bold"), command=confirm_selection, width=25, height=2)
+    btn_launch.pack(pady=25)
+    
+    launcher_root.mainloop()
 
 if __name__ == "__main__":
-    main()
+    run_launcher()
