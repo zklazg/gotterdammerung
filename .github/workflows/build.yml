@@ -1,0 +1,29 @@
+name: Architect Build Engine
+on: [push]
+
+jobs:
+  build_windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller numpy pygame pyttsx3
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller --onefile --noconsole --name "Gotterdammerung" gotterdammerung.py
+
+      - name: Upload Executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: Architect-Windows-EXE
+          path: dist/Gotterdammerung.exe
